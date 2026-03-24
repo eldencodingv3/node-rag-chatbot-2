@@ -14,7 +14,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', mode: vectorStore.isLocalMode() ? 'fallback' : 'openai' });
 });
 
 app.post('/api/chat', async (req, res) => {
@@ -22,10 +22,6 @@ app.post('/api/chat', async (req, res) => {
 
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'Message is required and must be a string.' });
-  }
-
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(503).json({ error: 'OpenAI API key is not configured. Please set OPENAI_API_KEY.' });
   }
 
   if (!isReady) {
@@ -42,18 +38,17 @@ app.post('/api/chat', async (req, res) => {
 });
 
 async function start() {
-  if (!process.env.OPENAI_API_KEY) {
-    console.warn('WARNING: OPENAI_API_KEY is not set. The chat endpoint will not work until it is configured.');
-  } else {
-    try {
-      console.log('Initializing vector store...');
-      await vectorStore.initialize();
-      isReady = true;
-      console.log('Vector store initialized successfully');
-    } catch (error) {
-      console.error('Failed to initialize vector store:', error.message);
-      console.warn('Server will start but chat functionality may be limited.');
+  try {
+    console.log('Initializing vector store...');
+    await vectorStore.initialize();
+    isReady = true;
+    console.log('Vector store initialized successfully');
+    if (vectorStore.isLocalMode()) {
+      console.log('Running in FALLBACK mode — responses come directly from FAQ matching');
     }
+  } catch (error) {
+    console.error('Failed to initialize vector store:', error.message);
+    console.warn('Server will start but chat functionality will not be available.');
   }
 
   app.listen(PORT, () => {
